@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import logging
 import mimetypes
 import os
 import queue
@@ -24,6 +25,43 @@ from typing import Any
 SERVER_NAME = "seedance-local-http"
 SERVER_VERSION = "0.2.0"
 PROTOCOL_VERSION = "2025-03-26"
+LOGGER = logging.getLogger("seedance_local")
+
+
+def setup_logging() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%Y/%m/%d %H:%M:%S",
+    )
+
+
+def log_info(message: str, **fields: Any) -> None:
+    suffix = ""
+    if fields:
+        parts = [f"{key}={json.dumps(value, ensure_ascii=False)}" for key, value in fields.items()]
+        suffix = " " + " ".join(parts)
+    LOGGER.info("%s%s", message, suffix)
+
+
+def log_warning(message: str, **fields: Any) -> None:
+    suffix = ""
+    if fields:
+        parts = [f"{key}={json.dumps(value, ensure_ascii=False)}" for key, value in fields.items()]
+        suffix = " " + " ".join(parts)
+    LOGGER.warning("%s%s", message, suffix)
+
+
+def format_duration(seconds: float) -> str:
+    if seconds < 0.001:
+        return f"{seconds * 1000000:.0f}µs"
+    if seconds < 1:
+        return f"{seconds * 1000:.3f}ms"
+    if seconds < 60:
+        return f"{seconds:.3f}s"
+    minutes = int(seconds // 60)
+    remaining_seconds = seconds - (minutes * 60)
+    return f"{minutes}m{remaining_seconds:05.3f}s"
 
 
 @dataclass
@@ -104,6 +142,7 @@ class AppState:
         session = Session(session_id=secrets.token_urlsafe(24))
         with self.sessions_lock:
             self.sessions[session.session_id] = session
+        log_info("创建 MCP 会话", session_id=session.session_id)
         return session
 
     def get_session(self, session_id: str | None) -> Session | None:
@@ -116,7 +155,10 @@ class AppState:
         if not session_id:
             return False
         with self.sessions_lock:
-            return self.sessions.pop(session_id, None) is not None
+            deleted = self.sessions.pop(session_id, None) is not None
+        if deleted:
+            log_info("删除 MCP 会话", session_id=session_id)
+        return deleted
 
 
 def normalize_path(path: str) -> str:
@@ -331,9 +373,11 @@ def poll_task(config: Config, task_id: str) -> dict[str, Any]:
     )
     deadline = time.time() + config.poll_timeout_seconds
     last_payload: dict[str, Any] = {}
+    log_info("开始轮询视频任务", task_id=task_id, poll_interval_seconds=config.poll_interval_seconds)
     while time.time() < deadline:
         last_payload = request_json("GET", url, build_api_headers(config.api_key))
         status = extract_status(last_payload)
+        log_info("视频任务状态更新", task_id=task_id, status=status)
         if status in {"succeeded", "success", "completed", "done"}:
             return last_payload
         if status in {"failed", "error", "cancelled", "canceled"}:
@@ -372,6 +416,13 @@ def handle_image_tool(config: Config, arguments: dict[str, Any]) -> dict[str, An
     if not isinstance(extra_body, dict):
         raise RuntimeError("extra_body must be an object")
     body.update(extra_body)
+    log_info(
+        "开始调用图片生成",
+        model=body["model"],
+        has_image="image" in body,
+        stream=body.get("stream", False),
+        size=body.get("size"),
+    )
 
     request_url = join_url(config.base_url, config.image_create_path)
     events: list[dict[str, Any]] = []
@@ -395,6 +446,7 @@ def handle_image_tool(config: Config, arguments: dict[str, Any]) -> dict[str, An
     if arguments.get("download", True):
         for index, url in enumerate(urls, start=1):
             downloads.append(download_file(url, config.output_dir, f"image-{index}"))
+    log_info("图片生成完成", model=body["model"], url_count=len(urls), download_count=len(downloads))
     return {
         "model": body["model"],
         "request_body": body,
@@ -432,6 +484,14 @@ def handle_video_tool(config: Config, arguments: dict[str, Any]) -> dict[str, An
     if not isinstance(extra_body, dict):
         raise RuntimeError("extra_body must be an object")
     body.update(extra_body)
+    log_info(
+        "开始调用视频生成",
+        model=body["model"],
+        content_count=len(body["content"]),
+        duration=body.get("duration"),
+        ratio=body.get("ratio"),
+        resolution=body.get("resolution"),
+    )
 
     create_response = request_json(
         "POST",
@@ -441,6 +501,7 @@ def handle_video_tool(config: Config, arguments: dict[str, Any]) -> dict[str, An
     )
     task_id = extract_task_id(create_response)
     if not task_id:
+        log_warning("视频任务创建返回中未找到 task_id", model=body["model"])
         return {
             "model": body["model"],
             "task_id": None,
@@ -455,6 +516,7 @@ def handle_video_tool(config: Config, arguments: dict[str, Any]) -> dict[str, An
     if arguments.get("download", True):
         for index, url in enumerate(urls, start=1):
             downloads.append(download_file(url, config.output_dir, f"video-{index}"))
+    log_info("视频生成完成", model=body["model"], task_id=task_id, url_count=len(urls), download_count=len(downloads))
     return {
         "model": body["model"],
         "task_id": task_id,
@@ -582,6 +644,8 @@ def handle_rpc_message(state: AppState, session: Session | None, message: dict[s
     method = message.get("method")
     request_id = message.get("id")
     params = message.get("params") or {}
+    if method:
+        log_info("收到 MCP 请求", method=method, request_id=request_id, session_id=session.session_id if session else None)
 
     if method == "notifications/initialized":
         return None
@@ -594,6 +658,7 @@ def handle_rpc_message(state: AppState, session: Session | None, message: dict[s
     if method == "tools/call":
         name = params.get("name")
         arguments = params.get("arguments") or {}
+        log_info("开始执行 MCP 工具", tool=name, request_id=request_id)
         try:
             if name == "seedance_text_to_image":
                 result = handle_image_tool(state.config, arguments)
@@ -602,8 +667,10 @@ def handle_rpc_message(state: AppState, session: Session | None, message: dict[s
             else:
                 return error_response(request_id, -32601, f"Unknown tool: {name}")
         except Exception as exc:
+            log_warning("MCP 工具执行失败", tool=name, error=str(exc))
             return success_response(request_id,
                                     {"content": [{"type": "text", "text": f"Tool error: {exc}"}], "isError": True})
+        log_info("MCP 工具执行完成", tool=name, request_id=request_id)
         return success_response(request_id, make_tool_result(result))
     if method is None:
         return None
@@ -621,7 +688,40 @@ class MCPHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         return
 
+    def send_response(self, code: int, message: str | None = None) -> None:
+        self._response_status = code
+        super().send_response(code, message)
+
+    def _run_with_access_log(self, method_name: str, fn: Any) -> None:
+        start = time.time()
+        self._response_status = HTTPStatus.INTERNAL_SERVER_ERROR
+        try:
+            fn()
+        finally:
+            elapsed = time.time() - start
+            client_ip = self.client_address[0] if self.client_address else "-"
+            now = time.strftime("%Y/%m/%d %H:%M:%S", time.localtime())
+            log_info(
+                '[HTTP] %s | %s | %s | %s | %s "%s"' % (
+                    now,
+                    getattr(self, "_response_status", "-"),
+                    format_duration(elapsed),
+                    client_ip,
+                    method_name,
+                    urllib.parse.urlparse(self.path).path,
+                )
+            )
+
     def do_GET(self) -> None:
+        self._run_with_access_log("GET", self._do_get)
+
+    def do_POST(self) -> None:
+        self._run_with_access_log("POST", self._do_post)
+
+    def do_DELETE(self) -> None:
+        self._run_with_access_log("DELETE", self._do_delete)
+
+    def _do_get(self) -> None:
         if not self._require_valid_path():
             return
         if not self._require_origin():
@@ -630,7 +730,7 @@ class MCPHandler(BaseHTTPRequestHandler):
             return
         self._require_sse_session_stream()
 
-    def do_POST(self) -> None:
+    def _do_post(self) -> None:
         if not self._require_valid_path():
             return
         if not self._require_origin():
@@ -685,7 +785,7 @@ class MCPHandler(BaseHTTPRequestHandler):
             body = responses[0] if responses else {}
         self._send_json(HTTPStatus.OK, body, session.session_id if has_init and session else None)
 
-    def do_DELETE(self) -> None:
+    def _do_delete(self) -> None:
         if not self._require_valid_path():
             return
         if not self._require_origin():
@@ -821,21 +921,29 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    setup_logging()
     args = parse_args()
     config = Config.load(args.config)
     state = AppState(config)
 
     httpd = MCPHTTPServer((config.bind_host, config.bind_port), MCPHandler, state)
-    print(
-        f"{SERVER_NAME} listening on http://{config.bind_host}:{config.bind_port}{config.mcp_path}",
-        flush=True,
+    log_info(
+        "MCP 服务启动完成",
+        server=SERVER_NAME,
+        version=SERVER_VERSION,
+        listen=f"http://{config.bind_host}:{config.bind_port}{config.mcp_path}",
+        image_model=config.image_model,
+        video_model=config.video_model,
+        output_dir=str(config.output_dir),
+        auth_enabled=bool(config.auth_token),
     )
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        pass
+        log_info("收到中断信号，准备关闭服务")
     finally:
         httpd.server_close()
+        log_info("MCP 服务已停止")
     return 0
 
 

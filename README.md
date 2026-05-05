@@ -47,7 +47,7 @@ docker compose up --build
 
 ```bash
 claude mcp add --transport http seedance-local http://127.0.0.1:8765/mcp \
-  --header "Authorization: Bearer change-me"
+  --header "Authorization: Bearer <your-auth-token>"
 ```
 
 ## Claude Code 配置
@@ -61,7 +61,7 @@ claude mcp add --transport http seedance-local http://127.0.0.1:8765/mcp \
       "type": "http",
       "url": "http://127.0.0.1:8765/mcp",
       "headers": {
-        "Authorization": "Bearer change-me"
+        "Authorization": "Bearer <your-auth-token>"
       }
     }
   }
