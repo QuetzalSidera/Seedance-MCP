@@ -1,0 +1,9 @@
+services:
+  seedance-mcp:
+    build: .
+    container_name: seedance-mcp
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./config.toml:/app/config.toml:ro
+      - ./outputs:/app/outputs

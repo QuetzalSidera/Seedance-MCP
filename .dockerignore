@@ -1,0 +1,5 @@
+__pycache__/
+.idea/
+outputs/
+*.pyc
+config.toml

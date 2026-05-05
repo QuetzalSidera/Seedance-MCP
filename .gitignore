@@ -1,0 +1,6 @@
+.venv
+output
+config.toml
+.idea
+.DS_Store
+__pycache__

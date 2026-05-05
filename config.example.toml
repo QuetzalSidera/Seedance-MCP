@@ -1,0 +1,65 @@
+# Seedance Local MCP Server 配置示例
+# 复制为 config.toml 后再修改：
+#   cp config.example.toml config.toml
+
+[server]
+# 本地监听地址。
+# 本机直接运行推荐 127.0.0.1。
+# 如果使用 docker compose 并且要从宿主机访问，请改成 0.0.0.0。
+host = "127.0.0.1"
+
+# MCP HTTP 服务端口。
+port = 8765
+
+# MCP 端点路径。通常不需要修改。
+mcp_path = "/mcp"
+
+# 生成的图片/视频下载保存目录。
+output_dir = "./outputs"
+
+# 视频任务轮询间隔，单位秒。
+poll_interval_seconds = 5
+
+# 视频任务最长等待时间，单位秒。
+poll_timeout_seconds = 300
+
+# MCP GET 流连接保活时长，单位秒。
+get_stream_timeout_seconds = 30
+
+[volcengine]
+# 火山方舟 API Key。
+api_key = "your_ark_api_key"
+
+# 方舟 base URL。
+base_url = "https://ark.cn-beijing.volces.com"
+
+# Seedream 图片生成接口路径。
+image_create_path = "/api/v3/images/generations"
+
+# 默认图片模型。
+# 官方文档当前推荐可用值：
+# - doubao-seedream-5-0-260128
+# - doubao-seedream-5-0-lite-260128
+image_model = "doubao-seedream-5-0-260128"
+
+# Seedance 视频任务创建接口路径。
+video_create_path = "/api/v3/contents/generations/tasks"
+
+# Seedance 视频任务查询接口路径模板。
+# {task_id} 会被程序自动替换。
+video_get_path_template = "/api/v3/contents/generations/tasks/{task_id}"
+
+# 默认视频模型。
+# 官方文档当前推荐可用值：
+# - doubao-seedance-2-0-260128
+# - doubao-seedance-2-0-fast-260128
+video_model = "doubao-seedance-2-0-260128"
+
+[security]
+# 本地 MCP Server 的 Bearer Token。
+# Claude Code 连接时需要带上它。
+auth_token = "change-me"
+
+# 允许的 Origin 列表。
+# 默认保留本地访问来源即可。
+allowed_origins = ["http://localhost", "http://127.0.0.1"]
