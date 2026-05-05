@@ -61,7 +61,7 @@ video_model = "doubao-seedance-2-0-260128"
 [security]
 # 本地 MCP Server 的 Bearer Token。
 # Claude Code 连接时需要带上它。
-auth_token = "change-me"
+auth_token = "default-auth-token"
 
 # 允许的 Origin 列表。
 # 默认保留本地访问来源即可。

@@ -24,12 +24,9 @@
 cp config.example.toml config.toml
 ```
 
-2. 按需选择图片模型：
+API Key可于[火山引擎控制台](https://console.volcengine.com/ark)申请
 
-- Seedream 5.0：保留默认 `doubao-seedream-5-0-260128`
-- Seedream 3.0：把 `image_model` 改成 `doubao-seedream-3-0-t2i-250415`
-
-3. 启动服务。
+2. 启动服务。
 
 本地运行：
 
@@ -43,16 +40,16 @@ python3 server.py --config config.toml
 docker compose up --build
 ```
 
-4. 在 Claude Code 中接入：
+3. 在 Claude Code 中接入：
 
 ```bash
 claude mcp add --transport http seedance-local http://127.0.0.1:8765/mcp \
-  --header "Authorization: Bearer <your-auth-token>"
+  --header "Authorization: Bearer default-auth-token"
 ```
 
-## Claude Code 配置
+通过公网访问建议修改`default-auth-token`
 
-如果你更想用 `.mcp.json`：
+如果你更想用 `.claude.json`：
 
 ```json
 {
