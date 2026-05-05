@@ -81,6 +81,7 @@ class Config:
     image_model: str
     video_model: str
     output_dir: Path
+    api_request_timeout_seconds: float
     poll_interval_seconds: float
     poll_timeout_seconds: float
     bind_host: str
@@ -121,6 +122,7 @@ class Config:
             image_model=str(volc.get("image_model", "doubao-seedream-5-0-260128")),
             video_model=str(volc.get("video_model", "doubao-seedance-2-0-260128")),
             output_dir=output_dir,
+            api_request_timeout_seconds=float(server.get("api_request_timeout_seconds", 300)),
             poll_interval_seconds=float(server.get("poll_interval_seconds", 5)),
             poll_timeout_seconds=float(server.get("poll_timeout_seconds", 300)),
             bind_host=str(server.get("host", "127.0.0.1")),
@@ -188,11 +190,17 @@ def join_url(base_url: str, path: str) -> str:
     return f"{base_url}{normalize_path(path)}"
 
 
-def request_json(method: str, url: str, headers: dict[str, str], body: dict[str, Any] | None = None) -> dict[str, Any]:
+def request_json(
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    body: dict[str, Any] | None = None,
+    timeout_seconds: float = 120,
+) -> dict[str, Any]:
     payload = None if body is None else json.dumps(body).encode("utf-8")
     request = urllib.request.Request(url=url, method=method, headers=headers, data=payload)
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             raw = response.read().decode("utf-8")
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as exc:
@@ -202,13 +210,19 @@ def request_json(method: str, url: str, headers: dict[str, str], body: dict[str,
         raise RuntimeError(f"Network error calling {url}: {exc.reason}") from exc
 
 
-def request_sse(method: str, url: str, headers: dict[str, str], body: dict[str, Any]) -> list[dict[str, Any]]:
+def request_sse(
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    body: dict[str, Any],
+    timeout_seconds: float = 300,
+) -> list[dict[str, Any]]:
     payload = json.dumps(body).encode("utf-8")
     request = urllib.request.Request(url=url, method=method, headers=headers, data=payload)
     events: list[dict[str, Any]] = []
     current_data_lines: list[str] = []
     try:
-        with urllib.request.urlopen(request, timeout=300) as response:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             for raw_line in response:
                 line = raw_line.decode("utf-8").rstrip("\r\n")
                 if not line:
@@ -375,7 +389,12 @@ def poll_task(config: Config, task_id: str) -> dict[str, Any]:
     last_payload: dict[str, Any] = {}
     log_info("开始轮询视频任务", task_id=task_id, poll_interval_seconds=config.poll_interval_seconds)
     while time.time() < deadline:
-        last_payload = request_json("GET", url, build_api_headers(config.api_key))
+        last_payload = request_json(
+            "GET",
+            url,
+            build_api_headers(config.api_key),
+            timeout_seconds=config.api_request_timeout_seconds,
+        )
         status = extract_status(last_payload)
         log_info("视频任务状态更新", task_id=task_id, status=status)
         if status in {"succeeded", "success", "completed", "done"}:
@@ -429,7 +448,13 @@ def handle_image_tool(config: Config, arguments: dict[str, Any]) -> dict[str, An
     if body.get("stream") is True:
         headers = build_api_headers(config.api_key)
         headers["Accept"] = "text/event-stream"
-        events = request_sse("POST", request_url, headers, body)
+        events = request_sse(
+            "POST",
+            request_url,
+            headers,
+            body,
+            timeout_seconds=config.api_request_timeout_seconds,
+        )
         response = {"events": events}
         final_event = next((event for event in reversed(events) if event.get("type") == "image_generation.completed"),
                            {})
@@ -440,6 +465,7 @@ def handle_image_tool(config: Config, arguments: dict[str, Any]) -> dict[str, An
             request_url,
             build_api_headers(config.api_key),
             body,
+            timeout_seconds=config.api_request_timeout_seconds,
         )
         urls = extract_urls(response)
     downloads: list[str] = []
@@ -498,6 +524,7 @@ def handle_video_tool(config: Config, arguments: dict[str, Any]) -> dict[str, An
         join_url(config.base_url, config.video_create_path),
         build_api_headers(config.api_key),
         body,
+        timeout_seconds=config.api_request_timeout_seconds,
     )
     task_id = extract_task_id(create_response)
     if not task_id:

@@ -17,6 +17,10 @@ mcp_path = "/mcp"
 # 生成的图片/视频下载保存目录。
 output_dir = "./outputs"
 
+# 上游火山方舟 API 请求超时时间，单位秒。
+# Seedream/Seedance 生成任务可能超过 120 秒，默认建议 300。
+api_request_timeout_seconds = 300
+
 # 视频任务轮询间隔，单位秒。
 poll_interval_seconds = 5
 
@@ -38,11 +42,9 @@ image_create_path = "/api/v3/images/generations"
 
 # 默认图片模型。
 # 官方文档当前推荐可用值：
-# - doubao-seedream-3-0-t2i-250415
+# - doubao-seedream-4-0-250828
+# - doubao-seedream-4-5-251128
 # - doubao-seedream-5-0-260128
-# - doubao-seedream-5-0-lite-260128
-# 如果你只需要 Seedream 3.0 文生图，可直接改成：
-# image_model = "doubao-seedream-3-0-t2i-250415"
 image_model = "doubao-seedream-5-0-260128"
 
 # Seedance 视频任务创建接口路径。
