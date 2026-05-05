@@ -1,6 +1,6 @@
 # Seedance Local MCP Server
 
-把 `Seedream 5.0` 生图和 `Seedance 2.0` 生视频封装成一个本地 MCP Server，方便 Claude Code 直接调用。
+把 `Seedream 3.0 / 5.0` 生图和 `Seedance 2.0` 生视频封装成一个本地 MCP Server，方便 Claude Code 直接调用。
 
 ## 宣传语
 
@@ -8,6 +8,7 @@
 
 ## 功能一览
 
+- 支持 Seedream 3.0 文生图
 - 支持 Seedream 5.0 文生图、图生图、多图融合、组图生成
 - 支持 Seedream 5.0 联网搜索与流式图片事件收集
 - 支持 Seedance 2.0 文生视频、多模态参考、视频编辑、视频延长
@@ -23,7 +24,12 @@
 cp config.example.toml config.toml
 ```
 
-2. 启动服务。
+2. 按需选择图片模型：
+
+- Seedream 5.0：保留默认 `doubao-seedream-5-0-260128`
+- Seedream 3.0：把 `image_model` 改成 `doubao-seedream-3-0-t2i-250415`
+
+3. 启动服务。
 
 本地运行：
 
@@ -37,7 +43,7 @@ python3 server.py --config config.toml
 docker compose up --build
 ```
 
-3. 在 Claude Code 中接入：
+4. 在 Claude Code 中接入：
 
 ```bash
 claude mcp add --transport http seedance-local http://127.0.0.1:8765/mcp \
@@ -75,6 +81,17 @@ claude mcp add --transport http seedance-local http://127.0.0.1:8765/mcp \
   "output_format": "png",
   "response_format": "url",
   "watermark": false
+}
+```
+
+Seedream 3.0 文生图示例：
+
+```json
+{
+  "model": "doubao-seedream-3-0-t2i-250415",
+  "prompt": "鱼眼镜头，一只猫咪的头部，画面呈现出猫咪的五官因为拍摄方式扭曲的效果。",
+  "size": "1024x1024",
+  "response_format": "url"
 }
 ```
 
